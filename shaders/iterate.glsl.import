@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cgm4r4rfghy2d"
+path="res://.godot/imported/iterate.glsl-dae333ef4ddea3977b3af5fe5c9cd71d.res"
+
+[deps]
+
+source_file="res://shaders/iterate.glsl"
+dest_files=["res://.godot/imported/iterate.glsl-dae333ef4ddea3977b3af5fe5c9cd71d.res"]
+
+[params]
+

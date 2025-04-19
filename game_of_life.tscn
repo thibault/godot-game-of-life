@@ -1,12 +1,56 @@
-[gd_scene load_steps=2 format=3 uid="uid://ddn4snml5531k"]
+[gd_scene load_steps=10 format=3 uid="uid://ddn4snml5531k"]
+
+[ext_resource type="Script" uid="uid://fo6xmysmkdtl" path="res://game_of_life.gd" id="1_2q17r"]
+[ext_resource type="Shader" uid="uid://cqyy3s8sy2qwx" path="res://game_of_life.gdshader" id="1_i6ly2"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_x1gc7"]
+sky_horizon_color = Color(0.662243, 0.671743, 0.686743, 1)
+ground_horizon_color = Color(0.662243, 0.671743, 0.686743, 1)
+
+[sub_resource type="Sky" id="Sky_2q17r"]
+sky_material = SubResource("ProceduralSkyMaterial_x1gc7")
+
+[sub_resource type="Environment" id="Environment_i6ly2"]
+background_mode = 2
+sky = SubResource("Sky_2q17r")
+tonemap_mode = 2
+glow_enabled = true
+
+[sub_resource type="Texture2DRD" id="Texture2DRD_i6ly2"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_bc2ma"]
+render_priority = 0
+shader = ExtResource("1_i6ly2")
+shader_parameter/cells = SubResource("Texture2DRD_i6ly2")
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_x1gc7"]
+material = SubResource("ShaderMaterial_bc2ma")
+size = Vector2(128, 128)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_i6ly2"]
+data = PackedVector3Array(64, 0, 64, -64, 0, 64, 64, 0, -64, -64, 0, 64, -64, 0, -64, 64, 0, -64)
 
 [node name="Node3D" type="Node3D"]
 
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 0, 0)
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_i6ly2")
+
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 mesh = SubResource("PlaneMesh_x1gc7")
+script = ExtResource("1_2q17r")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="MeshInstance3D"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="MeshInstance3D/StaticBody3D"]
+shape = SubResource("ConcavePolygonShape3D_i6ly2")
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, -4.37114e-08, 1, 0, -1, -4.37114e-08, 0, 10, 0)
 projection = 1
+size = 128.0
+
+[connection signal="input_event" from="MeshInstance3D/StaticBody3D" to="MeshInstance3D" method="_on_input_event"]
