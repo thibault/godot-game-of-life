@@ -6,14 +6,16 @@ class_name ShaderTools extends Node
 class Buffer:
 	var size: Vector2
 	var format: RenderingDevice.DataFormat
+	var repeat_mode: RenderingDevice.SamplerRepeatMode
 	var texture: RID
 	var sampler: RID
 	var in_uniform: RDUniform
 	var out_uniform: RDUniform
 
-	func _init(_size: Vector2, _format: RenderingDevice.DataFormat, _data: PackedByteArray) -> void:
+	func _init(_size: Vector2, _format: RenderingDevice.DataFormat, _data: PackedByteArray = [], _repeat_mode: RenderingDevice.SamplerRepeatMode = RenderingDevice.SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE) -> void:
 		size = _size
 		format = _format
+		repeat_mode = _repeat_mode
 		texture = _create_texture(_data)
 		sampler = _create_sampler()
 		in_uniform = _create_in_uniform()
@@ -49,9 +51,9 @@ class Buffer:
 	func _create_sampler() -> RID:
 		var sampler_state := RDSamplerState.new()
 		sampler_state.unnormalized_uvw = true
-		sampler_state.repeat_u = RenderingDevice.SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE
-		sampler_state.repeat_v = RenderingDevice.SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE
-		sampler_state.repeat_w = RenderingDevice.SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE
+		sampler_state.repeat_u = repeat_mode
+		sampler_state.repeat_v = repeat_mode
+		sampler_state.repeat_w = repeat_mode
 		sampler_state.mag_filter = RenderingDevice.SAMPLER_FILTER_LINEAR
 		sampler_state.min_filter = RenderingDevice.SAMPLER_FILTER_LINEAR
 		var rd := RenderingServer.get_rendering_device()
@@ -91,10 +93,10 @@ class DoubleBuffer:
 	var input: Buffer
 	var output: Buffer
 
-	func _init(_size: Vector2, _format: RenderingDevice.DataFormat, _data: PackedByteArray) -> void:
+	func _init(_size: Vector2, _format: RenderingDevice.DataFormat, _data: PackedByteArray = [], _repeat_mode: RenderingDevice.SamplerRepeatMode = RenderingDevice.SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE) -> void:
 		size = _size
-		input = Buffer.new(_size, _format, _data)
-		output = Buffer.new(_size, _format, [])
+		input = Buffer.new(_size, _format, _data, _repeat_mode)
+		output = Buffer.new(_size, _format)
 
 	func swap() -> void:
 		var tmp: Buffer
@@ -194,8 +196,8 @@ class Pipeline:
 		size = _size
 		shaders_dir = _dir
 
-	func add_texture_buffer(name: String, format: RenderingDevice.DataFormat, data: PackedByteArray) -> void:
-		var buffer = DoubleBuffer.new(size, format, data)
+	func add_texture_buffer(name: String, format: RenderingDevice.DataFormat, data: PackedByteArray = [], repeat_mode: RenderingDevice.SamplerRepeatMode = RenderingDevice.SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE) -> void:
+		var buffer = DoubleBuffer.new(size, format, data, repeat_mode)
 		buffers[name] = buffer
 
 	func add_byte_buffer(name: String, data: PackedByteArray) -> void:
