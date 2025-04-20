@@ -1,6 +1,6 @@
 shader_type spatial;
 
-uniform sampler2D cells: filter_nearest;
+uniform sampler2D cells: filter_nearest, repeat_disable;
 
 void vertex() {
 }

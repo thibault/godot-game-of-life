@@ -1,6 +1,6 @@
 class_name ShaderTools extends Node
 
-# XXX TODO add rid clearing code
+# This is our shader management API.
 
 # Represents a single buffer containing data manipulated by a shader
 class Buffer:
@@ -9,6 +9,9 @@ class Buffer:
 	var repeat_mode: RenderingDevice.SamplerRepeatMode
 	var texture: RID
 	var sampler: RID
+	
+	# Dependeng on if we want to use the buffer as input or output, we will
+	# provide a different uniform.
 	var in_uniform: RDUniform
 	var out_uniform: RDUniform
 
@@ -21,6 +24,7 @@ class Buffer:
 		in_uniform = _create_in_uniform()
 		out_uniform = _create_out_uniform()
 
+	# Here, we simply create the texture with the correct settings
 	func _create_texture(data: PackedByteArray) -> RID:
 		var tf: RDTextureFormat = RDTextureFormat.new()
 		tf.format = format
@@ -48,14 +52,24 @@ class Buffer:
 
 		return rid
 
+	# We create the sampler object. This will become a `sampler2D` in the shader.
 	func _create_sampler() -> RID:
 		var sampler_state := RDSamplerState.new()
+		
+		# I found it far easier to work with shaders with unnormalized coordinates.
+		# This means that you will sample the shader using actual coordinates instead
+		# of coordinates normalized to [0:1]
 		sampler_state.unnormalized_uvw = true
+		
+		# Setup the result when sampling outside the texture's coordinates.
 		sampler_state.repeat_u = repeat_mode
 		sampler_state.repeat_v = repeat_mode
 		sampler_state.repeat_w = repeat_mode
+		
+		# Use linear interpolation when sampling between texels
 		sampler_state.mag_filter = RenderingDevice.SAMPLER_FILTER_LINEAR
 		sampler_state.min_filter = RenderingDevice.SAMPLER_FILTER_LINEAR
+		
 		var rd := RenderingServer.get_rendering_device()
 		var sampler = rd.sampler_create(sampler_state)
 		return sampler
@@ -78,16 +92,18 @@ class Buffer:
 	# Get the uniform for the buffer as input data (with sampling)
 	func get_in_uniform(binding: int) -> RDUniform:
 		var uniform: RDUniform = in_uniform
+		# The binding must match the `binding` value in the `layout` definition in the shader.
 		uniform.binding = binding
 		return uniform
 
 	func get_out_uniform(binding: int) -> RDUniform:
 		var uniform: RDUniform = out_uniform
+		# The binding must match the `binding` value in the `layout` definition in the shader.
 		uniform.binding = binding
 		return uniform
 
 
-# Represents a single data with a ping-pong buffer for shader in/out manipulation
+# Represents a single data source with a ping-pong buffer for shader in/out manipulation
 class DoubleBuffer:
 	var size: Vector2
 	var input: Buffer
@@ -96,7 +112,7 @@ class DoubleBuffer:
 	func _init(_size: Vector2, _format: RenderingDevice.DataFormat, _data: PackedByteArray = [], _repeat_mode: RenderingDevice.SamplerRepeatMode = RenderingDevice.SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE) -> void:
 		size = _size
 		input = Buffer.new(_size, _format, _data, _repeat_mode)
-		output = Buffer.new(_size, _format)
+		output = Buffer.new(_size, _format, [], _repeat_mode)
 
 	func swap() -> void:
 		var tmp: Buffer
@@ -112,6 +128,9 @@ class DoubleBuffer:
 		return uniform_set
 
 	func get_texture_rid() -> RID:
+		# The input texture always has the latest value
+		# To make sure of that, we must swap the buffers whenever a shader writes
+		# to the output.
 		return input.texture
 
 	func clear_texture() -> void:
@@ -138,7 +157,7 @@ class ByteBuffer:
 		var uniform_set := rd.uniform_set_create([uniform], shader, shader_set)
 		return uniform_set
 
-
+# This class connects a shader file and the buffers it must receive to run.
 class ComputeShader:
 	var rd: RenderingDevice
 	var shader: RID
@@ -153,6 +172,15 @@ class ComputeShader:
 		buffers = _buffers
 		get_push_constant = _get_push_constant
 
+		# The shader will be run X times in parallel
+		# X depends on two parameters.
+		#  1. the work group size, defined here
+		#  2. the local group size, defined inside the shader
+		# Since we want to run the shader for each and every pixel of the grid,
+		# we need to make sure that (work group size * local group size) >= grid_size.
+		# Note that sizes are split between the 3 dimensions.
+		# How to best choose dimensions seems to be a very hard problem.
+		# When in doubt, use 8.
 		@warning_ignore("integer_division")
 		x_groups = (_size.x - 1) / 8 + 1
 		@warning_ignore("integer_division")
@@ -167,12 +195,14 @@ class ComputeShader:
 	func set_buffers(_buffers: Dictionary[int, Variant]) -> void:
 		buffers = _buffers
 
+	# run the shader : build the compute list, bind buffers, etc.
 	func run(delta: float) -> void:
 		var push_constant = get_push_constant.call(delta)
 		var compute_list := rd.compute_list_begin()
 		rd.compute_list_bind_compute_pipeline(compute_list, pipeline)
 		rd.compute_list_set_push_constant(compute_list, push_constant, push_constant.size())
 
+		# Bind all the buffers
 		var uniform_sets: Array[RID]
 		for buffer_id in buffers:
 			var uniform_set = buffers[buffer_id].get_uniform_set(shader, buffer_id)
@@ -182,14 +212,24 @@ class ComputeShader:
 		rd.compute_list_dispatch(compute_list, x_groups, y_groups, 1)
 		rd.compute_list_end()
 
+		# We need to be careful to free instanciated resources when the are
+		# not used anymor.
 		for us in uniform_sets:
 			rd.free_rid(us)
 
 
+# This class manages a list of shaders and the sets of buffers they need.
 class Pipeline:
+	# Size of the grid the shaders will work on
 	var size: Vector2
+	
+	# In which dir are the shaders stored
 	var shaders_dir: String
+	
+	# Dictionnary of buffers with the buffer name as key
 	var buffers: Dictionary[String, Variant]
+	
+	# Dictionnary of shaders with the shader name as key
 	var shaders: Dictionary[String, ComputeShader]
 
 	func _init(_size: Vector2, _dir: String) -> void:
@@ -220,6 +260,7 @@ class Pipeline:
 			shader_buffers[shader_id] = buffers[_buffers[shader_id]]
 		shaders[name] = ComputeShader.new(shader_path, size, shader_buffers, get_push_constant)
 
+	# Run a single shader, and swap the buffers
 	func run(step: String, delta: float, to_swap: Array[String]) -> void:
 		var shader = shaders[step]
 		shader.run(delta)

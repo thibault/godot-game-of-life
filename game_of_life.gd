@@ -1,38 +1,55 @@
 @tool
 extends MeshInstance3D
 
-var grid_size: int = 128
+# This is our grid width and height
+var grid_size: int = 256
+
+# This is a special kind of texture that allows accessing textures
+# created directly with a RenderingDevice, Godot's low-level rendering api.
 var cells: Texture2DRD
+
+# This class will run the game of life simulation
 var simulation: Simulation
 
+@onready var camera: Camera3D = $"../Camera3D"
+
 func _ready() -> void:
+	simulation = Simulation.new(grid_size)
+	mesh.size = Vector2(grid_size, grid_size)
+	camera.size = grid_size
+	
+	# Here, we will use the same texture for computing and for rendering
 	cells = Texture2DRD.new()
 	mesh.material.set_shader_parameter("cells", cells)
-	var data = PackedByteArray()
-	data.resize(grid_size * grid_size)
-	data.fill(0)
-	simulation = Simulation.new(grid_size, PackedByteArray())
+	
 	
 func _physics_process(delta: float) -> void:
+	# We need access to the RenderingServer's inner data, but it's running
+	# in it's own thread. Thus, we need to process the simulation on the render thread.
 	RenderingServer.call_on_render_thread(_render_process.bind(delta))
 
 func _render_process(delta: float) -> void:
 	if simulation:
-		var a = Time.get_ticks_msec()
+		# Run a single game of life simulation
 		simulation.step(delta)
-		cells.texture_rd_rid = simulation.get_texture_rid("cells")
-		var b = Time.get_ticks_msec()
 		
-func _on_input_event(camera: Node, event: InputEvent, event_position: Vector3, normal: Vector3, shape_idx: int) -> void:
+		# Since we use a ping-pong buffer, the input became the output, etc.
+		# Thus, we need to update the rendering texture's rid, so it's pointing
+		# to the right data
+		cells.texture_rd_rid = simulation.get_texture_rid("cells")
+		
+func _unhandled_input(event: InputEvent) -> void:
 	if not simulation:
 		return
 		
+	var viewport_size = get_viewport().get_visible_rect().size
 	if event is InputEventMouseMotion:
-		var x = event_position.x
-		var y = event_position.z
+		var coords = event.position * grid_size / viewport_size
 
+		# Tell the grid to draw on the grid when we click on it
 		if event.pressure == 1.0:
 			var half = grid_size / 2.0
-			simulation.splat(Vector2(x + half, y + half))
+			simulation.splat(coords)
 		else:
+			# Cancel grid drawing
 			simulation.unsplat()
